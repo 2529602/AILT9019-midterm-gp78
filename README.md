@@ -24,8 +24,8 @@ document/page citations.
 *(Note: The folder name depends on how you downloaded/unzipped it. Ensure you are in the directory that contains `app.py`.)*
 ```bash
 cd AILT9019-midterm-gp78-main
-python -m pip install -r requirements.txt
-python app.py
+python3 -m pip install -r requirements.txt
+python3 app.py
 ```
 
 Then open <http://127.0.0.1:8765> in your browser.
