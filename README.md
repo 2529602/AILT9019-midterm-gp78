@@ -18,13 +18,12 @@ document/page citations.
 2. Double-click **`install.bat`** (first time only).
 3. Double-click **`start.bat`** — the app opens in your browser.
 
-### Option B — Command line (any OS)
+### Option B — Command line (macOS / Linux / Windows)
 
+**1. Open your terminal and navigate into the project folder.**
+*(Note: The folder name depends on how you downloaded/unzipped it. Ensure you are in the directory that contains `app.py`.)*
 ```bash
-cd ailt9019-qa
-python -m pip install -r requirements.txt
-python app.py
-```
+cd AILT9019-midterm-gp78-main
 
 Then open <http://127.0.0.1:8765> in your browser.
 
