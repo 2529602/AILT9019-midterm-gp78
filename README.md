@@ -20,10 +20,13 @@ document/page citations.
 
 ### Option B — Command line (macOS / Linux / Windows)
 
-**1. Open your terminal and navigate into the project folder.**
+**Open your terminal and navigate into the project folder.**
 *(Note: The folder name depends on how you downloaded/unzipped it. Ensure you are in the directory that contains `app.py`.)*
 ```bash
 cd AILT9019-midterm-gp78-main
+python -m pip install -r requirements.txt
+python app.py
+```
 
 Then open <http://127.0.0.1:8765> in your browser.
 
