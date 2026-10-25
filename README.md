@@ -21,7 +21,7 @@ document/page citations.
 ### Option B — Command line (macOS / Linux / Windows)
 
 **Open your terminal and navigate into the project folder.**
-*(Note: The folder name depends on how you downloaded/unzipped it. Ensure you are in the directory that contains `app.py`.)*
+*(Note: The folder name depends on how you downloaded/unzipped it. Ensure you are in the directory that contains `app.py`. If the cd command says "no such file or directory", make sure you use the cd command to navigate to the folder where you unzipped this project first.)*
 ```bash
 cd AILT9019-midterm-gp78-main
 python3 -m pip install -r requirements.txt
