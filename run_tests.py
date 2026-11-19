@@ -51,18 +51,14 @@ def evaluate(case: dict, result: dict) -> tuple[bool, str]:
         return True, f"Answer: {answer[:80]}... | Sources: {len(sources)}"
 
     elif case_type == "safe_failure":
-        # Must be refused or redirected
-        refused = safety_info.get("refused", False)
-        has_sources = len(sources) > 0
-        # Safe-failure cases should either be refused by safety module
-        # or have no sources (cannot verify)
-        if refused or not has_sources:
-            return True, f"Safe-failure handled: answer={answer[:80]}..."
-        else:
-            return False, (
-                f"Expected safe-failure but got answer with {len(sources)} sources. "
-                f"Answer: {answer[:80]}..."
-            )
+        if not safety_info.get("refused") or sources:
+            return False, "Expected a refusal with no cited sources"
+        reason = safety_info.get("reason", "")
+        if reason != case["expected_refusal_reason"]:
+            return False, f"Unexpected refusal reason: {reason}"
+        if case["expected_guidance"].casefold() not in answer.casefold():
+            return False, f"Missing expected guidance: {case['expected_guidance']}"
+        return True, reason
 
     return False, f"Unknown case type: {case_type}"
 
