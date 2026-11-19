@@ -114,10 +114,12 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         idx = get_index()
-        passages = idx.search(question, top_k=config.TOP_K, min_score=config.MIN_SCORE)
+        proposed_month = safety.proposal_move_month(question)
+        query = "proposal deadline moved" if proposed_month else question
+        passages = idx.search(query, top_k=config.TOP_K, min_score=config.MIN_SCORE)
 
         # Run safety checks
-        check = safety.check_safety(question, has_results=len(passages) > 0)
+        check = safety.check_safety(question, has_results=bool(passages), proposed_month=proposed_month)
         if check["refused"]:
             self._send_json(200, {
                 "question": question,
@@ -129,7 +131,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         # Draft answer from passages
-        result = llm.draft_answer(question, passages)
+        if proposed_month:
+            result = safety.answer_proposal_move(proposed_month, passages)
+        else:
+            result = llm.draft_answer(question, passages)
         self._send_json(200, {
             "question": question,
             "answer": result["answer"],

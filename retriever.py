@@ -15,6 +15,14 @@ def tokenize(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
 
 
+def cited_sources(passages):
+    """Number the retrieved pages in the order used by the answer."""
+    return [
+        {"label": f"S{i}", **{key: page[key] for key in ("doc_name", "page_num", "version", "score")}}
+        for i, page in enumerate(passages, start=1)
+    ]
+
+
 class BM25Index:
     """In-memory BM25 index built from a list of documents."""
 

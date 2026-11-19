@@ -13,6 +13,56 @@ Each check returns a dict with:
 
 import re
 
+from retriever import cited_sources
+
+
+MONTH = (r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+         r"jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?")
+MONTH_NAMES = "January February March April May June July August September October November December".split()
+
+
+def proposal_move_month(question):
+    """Identify the proposed destination month, scoped to the proposal."""
+    match = re.search(
+        rf"\bproposal(?:\s+(?:submission\s+)?(?:deadline|due\s+date))?\s+"
+        rf"(?:(?:has|had|is|was|been|got)\s+)*(?:move[d]?|chang(?:ed|e)|postponed|extended|pushed\s+back)"
+        rf"\s+(?:from\s+(?:\d{{1,2}}\s+)?(?:{MONTH})\s+)?(?:to|until)\s+(?:the\s+)?"
+        rf"(?:\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?)?({MONTH})\b", question, re.I,
+    )
+    if match:
+        return next(name for name in MONTH_NAMES if name[:3].lower() == match[1][:3].lower())
+    match = re.search(r"(?:proposal|提案)\s*(?:的)?(?:截止日期|截止时间)?(?:已经|已|被)?"
+                      r"(?:延期|推迟|延后|延迟|改)(?:了)?[到至]\s*(1[0-2]|[1-9])\s*月", question, re.I)
+    return MONTH_NAMES[int(match[1]) - 1] if match else None
+
+
+# PDF extraction can remove every space, including those inside a date.
+_CHANGE_RECORD = re.compile(
+    rf"proposal(?:submission)?(?:deadline|duedate)(?:was|hasbeen)?(?:moved|changed|extended|postponed)"
+    rf"from\d{{1,2}}(?:{MONTH})(?:inweek\d+)?to(\d{{1,2}})({MONTH})(?:inweek(\d+))?", re.I,
+)
+
+
+def answer_proposal_move(month, passages):
+    """Report the documented change without treating it as a live Moodle deadline."""
+    dates = {}
+    for page in passages:
+        for match in _CHANGE_RECORD.finditer(re.sub(r"\s+", "", page["text"])):
+            date = f"{int(match[1])} {match[2][:3].title()}"
+            dates.setdefault(date, (page, match[3]))
+
+    guidance = "Please check Moodle for the official deadline."
+    if len(dates) != 1:
+        return {"answer": f"I cannot verify a move to {month} from the indexed materials. {guidance}",
+                "sources": [], "used_llm": False}
+
+    date, (page, week) = next(iter(dates.items()))
+    record = f"The Week {week} record" if week else "The indexed record"
+    answer = f"[S1] {record} lists {date} as the revised proposal deadline."
+    if date.split()[1] != month[:3]:
+        answer += f" That record does not support a move to {month}."
+    return {"answer": f"{answer} {guidance}", "sources": cited_sources([page]), "used_llm": False}
+
 
 # --- keyword lists --------------------------------------------------
 
@@ -81,7 +131,7 @@ def _match_any(patterns, text):
     return False
 
 
-def check_safety(question: str, has_results: bool) -> dict:
+def check_safety(question: str, has_results: bool, *, proposed_month=None) -> dict:
     """
     Run all safety checks. Returns the first match or a pass-through.
 
@@ -113,7 +163,7 @@ def check_safety(question: str, has_results: bool) -> dict:
         }
 
     # Case 2: possible stale deadline → direct to Moodle
-    if _match_any(STALE_DEADLINE_PATTERNS, question):
+    if not proposed_month and _match_any(STALE_DEADLINE_PATTERNS, question):
         return {
             "refused": True,
             "reason": "Possible stale deadline information.",

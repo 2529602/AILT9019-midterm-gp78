@@ -10,6 +10,7 @@ import json
 import urllib.request
 
 import config
+from retriever import cited_sources
 
 
 def _build_prompt(question: str, passages: list[dict]) -> str:
@@ -140,15 +141,4 @@ def draft_answer(question: str, passages: list[dict]) -> dict:
             + "\n\n(Note: Set DEEPSEEK_API_KEY or run Ollama for AI-generated answers.)"
         )
 
-    sources = [
-        {
-            "label": f"S{i+1}",
-            "doc_name": p["doc_name"],
-            "page_num": p["page_num"],
-            "version": p["version"],
-            "score": p["score"],
-        }
-        for i, p in enumerate(passages)
-    ]
-
-    return {"answer": answer_text, "used_llm": used_llm, "sources": sources}
+    return {"answer": answer_text, "used_llm": used_llm, "sources": cited_sources(passages)}

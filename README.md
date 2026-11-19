@@ -50,7 +50,7 @@ ailt9019-qa/
 ├── indexer.py            # PDF parsing → SQLite storage + BM25 index builder
 ├── retriever.py         # BM25 retrieval (implemented from scratch)
 ├── llm.py               # LLM answer drafting (DeepSeek / Ollama) + citations
-├── safety.py            # Safe-failure / refusal logic (4 cases)
+├── safety.py            # Refusals and cited proposal deadline corrections
 ├── run_tests.py         # Evaluation runner for test cases
 ├── static/
 │   └── index.html       # Single-page frontend (HTML + JS)
@@ -75,9 +75,10 @@ Question → BM25 retrieval (top-k passages) → Safety check → LLM answer (op
 2. **Retrieval**: On each question, the BM25 algorithm (implemented in
    `retriever.py` with no external dependency) scores all pages and returns
    the top-k most relevant.
-3. **Safety check**: Before answering, `safety.py` checks for four
-   safe-failure cases (see below). If a case is triggered, the app refuses
-   and redirects the student appropriately.
+3. **Safety check**: Before drafting an answer, the app checks for requests
+   that need a refusal or a referral. When a question claims the proposal
+   moved to a particular month, it looks for a change record on the retrieved
+   pages, cites the recorded date when available, and directs the student to Moodle.
 4. **Answer drafting**: If an LLM is configured, `llm.py` sends the top
    passages to DeepSeek/Ollama with a prompt instructing it to cite sources
    with `[S1]`, `[S2]` markers. If no LLM is available, the app falls back
@@ -100,7 +101,7 @@ Question → BM25 retrieval (top-k passages) → Safety check → LLM answer (op
 
 ## Safe-Failure Cases
 
-The app is designed to fail safely in four scenarios:
+The evaluation covers five scenarios:
 
 | # | Scenario                         | Behaviour                                    |
 |---|----------------------------------|----------------------------------------------|
@@ -108,6 +109,7 @@ The app is designed to fail safely in four scenarios:
 | 2 | Possible stale deadline          | Directs to Moodle rather than presenting date |
 | 3 | Extension / grading request     | Declines; refers to course staff             |
 | 4 | Off-topic request                | Declines; steers back to course questions    |
+| 5 | Claimed proposal deadline change | Checks the claimed month against the indexed change record and refers to Moodle |
 
 ---
 
@@ -134,11 +136,13 @@ vertical bar separates acceptable wordings of one fact. These are fixed text
 checks. Review the answers alongside their cited pages, especially when using
 an LLM that may paraphrase.
 
-The baseline in retrieval-only mode scored **5/15** (concepts 0/5, dates 1/5,
-safety 4/5). Case 11 returned the midterm date and identified Moodle as the
+The baseline in retrieval-only mode scored **5/15**. With the deadline
+correction, the same cases scored **6/15** (concepts 0/5, dates 1/5,
+safety 5/5). Case 11 returned the midterm date and identified Moodle as the
 authority. Case 12 cited the final rubric but its excerpt ended before the
-deadline. Case 15 did not challenge the November premise or supply the
-updated September date. The source version identifiers for the run were
+deadline. Case 15 now cites the Week 4 date of 30 Sep on proposal page 1,
+challenges the claimed November move, and refers the student to Moodle.
+The source version identifiers for the run were
 `f8912827` (proposal), `7a0da91a` (midterm requirements), and `8c87b606`
 (final rubric).
 
