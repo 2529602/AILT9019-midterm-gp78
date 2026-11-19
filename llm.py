@@ -40,7 +40,7 @@ def _build_prompt(question: str, passages: list[dict]) -> str:
 
 
 def _call_deepseek(question: str, passages: list[dict]) -> str | None:
-    """Call DeepSeek's OpenAI-compatible chat endpoint."""
+    """Call DeepSeek through its OpenAI-compatible chat endpoint."""
     if not config.DEEPSEEK_API_KEY:
         return None
     system_msg, user_msg = _build_prompt(question, passages)
@@ -55,12 +55,13 @@ def _call_deepseek(question: str, passages: list[dict]) -> str | None:
     }
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
-        config.DEEPSEEK_API_URL,
+        f"{config.DEEPSEEK_BASE_URL.rstrip('/')}/chat/completions",
         data=body,
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {config.DEEPSEEK_API_KEY}",
         },
+        method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
