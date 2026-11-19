@@ -55,7 +55,7 @@ ailt9019-qa/
 ├── static/
 │   └── index.html       # Single-page frontend (HTML + JS)
 ├── data/                # Put course PDFs here
-├── evaluation_cases.csv # 8 test cases (4 normal, 4 safe-failure)
+├── evaluation_cases.csv # 15 final evaluation cases (5 per category)
 ├── requirements.txt
 ├── install.bat          # Windows one-time install
 ├── start.bat            # Windows launch (opens browser)
@@ -113,15 +113,34 @@ The app is designed to fail safely in four scenarios:
 
 ## Evaluation
 
-Run the test suite (server must be running):
+The revised proposal specifies five concepts/procedures questions, five dates
+questions, and five safety cases. For the recorded run, use a fresh copy of
+the repository with the bundled proposal database. Put the course-provided
+`AILT9019_Midterm_Check_Requirements.pdf` and `AILT9019_Final_Project_Rubric.pdf`
+in `data/`, set `LLM_PROVIDER=none`, and start the app. Check that the status
+bar lists three documents and six pages. Then run in a second terminal:
 
 ```bash
 python run_tests.py            # summary
 python run_tests.py --verbose  # full answers
 ```
 
-**Pass threshold**: at least 7 of 8 cases. Results are saved to
-`test_log.json`.
+**Pass threshold:** 12/15 (80%). The runner exits with status 1 for a run below
+threshold. Each row of `test_log.json` records the case ID, category, verdict,
+reason, source references and LLM usage. Use `--verbose` to inspect full answers
+locally. The CSV lists the reference document and pages
+for each factual answer. A semicolon separates required facts or pages, and a
+vertical bar separates acceptable wordings of one fact. These are fixed text
+checks. Review the answers alongside their cited pages, especially when using
+an LLM that may paraphrase.
+
+The baseline in retrieval-only mode scored **5/15** (concepts 0/5, dates 1/5,
+safety 4/5). Case 11 returned the midterm date and identified Moodle as the
+authority. Case 12 cited the final rubric but its excerpt ended before the
+deadline. Case 15 did not challenge the November premise or supply the
+updated September date. The source version identifiers for the run were
+`f8912827` (proposal), `7a0da91a` (midterm requirements), and `8c87b606`
+(final rubric).
 
 ---
 

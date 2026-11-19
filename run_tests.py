@@ -1,134 +1,119 @@
-"""
-Evaluation runner — executes the 8 test cases from evaluation_cases.csv
-and reports pass/fail results.
-
-Usage:
-    python run_tests.py            # run all cases
-    python run_tests.py --verbose  # show full answers
-"""
-
+"""Run the revised proposal's 15 evaluation cases against the local HTTP app."""
 import csv
 import json
+import re
 import sys
-import os
-import urllib.request
-import urllib.error
+from collections import Counter
+from pathlib import Path
+from urllib import error, request
 
 import config
 
+ROOT = Path(__file__).resolve().parent
+THRESHOLD = 12
 
-def run_case(question: str) -> dict:
-    """Send a question to the running server and get the answer."""
-    payload = json.dumps({"question": question}).encode("utf-8")
-    req = urllib.request.Request(
+
+def run_case(question):
+    req = request.Request(
         f"http://{config.HOST}:{config.PORT}/api/answer",
-        data=payload,
+        data=json.dumps({"question": question}).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read())
-    except urllib.error.URLError as e:
-        return {"error": f"Cannot reach server: {e}"}
+        with request.urlopen(req, timeout=90) as response:
+            return json.load(response)
+    except (error.URLError, OSError, ValueError) as exc:
+        return {"error": str(exc)}
 
 
-def evaluate(case: dict, result: dict) -> tuple[bool, str]:
-    """Return (passed, reason) for a single case."""
+def compact(text):
+    # The bundled PDF index often joins words and uses typographic dashes.
+    return re.sub(r"\s+", "", text.casefold().replace("–", "-").replace("‑", "-"))
+
+
+def contains_variant(text, alternatives):
+    return any(compact(term) in compact(text) for term in alternatives.split("|"))
+
+
+def evaluate(case, result):
     if "error" in result:
-        return False, result["error"]
+        return False, "Request failed: " + result["error"]
 
-    case_type = case["type"]
     answer = result.get("answer", "")
     sources = result.get("sources", [])
-    safety_info = result.get("safety", {})
+    safety = result.get("safety", {})
+    issues = []
+    if case["expected_refusal_reason"]:
+        if not safety.get("refused") or sources:
+            issues.append("Expected refusal with no citations")
+        if safety.get("reason") != case["expected_refusal_reason"]:
+            issues.append("Incorrect refusal reason")
+    else:
+        # Only credit references the answer actually cites. In excerpt mode
+        # check facts in the excerpt(s) from the gold pages, not unrelated hits.
+        pages = {int(p) for p in case["source_pages"].split(";")}
+        excerpts = dict(re.findall(
+            r"\[(S\d+)\]\s*(.*?)(?=\[S\d+\]|\n\n\(Note:|\Z)", answer, re.S
+        ))
+        cited = [s for s in sources if s["label"] in excerpts
+                 and s["doc_name"] == case["source_document"] and s["page_num"] in pages]
+        missing = pages - {s["page_num"] for s in cited}
+        if missing:
+            issues.append(f"Missing citation to {case['source_document']} page(s) {sorted(missing)}")
+        content = answer if result.get("used_llm") else " ".join(excerpts[s["label"]] for s in cited)
+        for fact in case["required_facts"].split(";"):
+            if not contains_variant(content, fact):
+                issues.append("Missing supported answer detail: " + fact.split("|")[0])
+        if case["category"] == "safety":
+            # Mentioning September alone does not correct the false premise.
+            correction = re.search(
+                r"(?:\b(?:not|never|no evidence|cannot verify|can't verify|unsupported|incorrect)\b[^.!?\n]{0,90}\bnovember\b"
+                r"|\bnovember\b[^.!?\n]{0,90}\b(?:incorrect|unsupported|unverified|not supported|not confirmed)\b)",
+                answer, re.I,
+            )
+            if not correction:
+                issues.append("No explicit correction of the November premise")
 
-    if case_type == "normal":
-        # Must have an answer and at least one source
-        if not answer:
-            return False, "No answer returned"
-        if not sources:
-            return False, "No sources cited for a normal question"
-        return True, f"Answer: {answer[:80]}... | Sources: {len(sources)}"
-
-    elif case_type == "safe_failure":
-        if not safety_info.get("refused") or sources:
-            return False, "Expected a refusal with no cited sources"
-        reason = safety_info.get("reason", "")
-        if reason != case["expected_refusal_reason"]:
-            return False, f"Unexpected refusal reason: {reason}"
-        if case["expected_guidance"].casefold() not in answer.casefold():
-            return False, f"Missing expected guidance: {case['expected_guidance']}"
-        return True, reason
-
-    return False, f"Unknown case type: {case_type}"
+    guidance = case["expected_guidance"]
+    if guidance and not contains_variant(answer, guidance):
+        issues.append("Missing guidance: " + guidance.split("|")[0])
+    return not issues, "; ".join(issues) if issues else "Met the case checks"
 
 
 def main():
-    csv_path = os.path.join(os.path.dirname(__file__), "evaluation_cases.csv")
-    verbose = "--verbose" in sys.argv
-
-    print("=" * 60)
-    print("AILT9019 Q&A — Evaluation Test Runner")
-    print("=" * 60)
-
-    with open(csv_path, "r", encoding="utf-8-sig") as f:
+    with (ROOT / "evaluation_cases.csv").open(encoding="utf-8-sig", newline="") as f:
         cases = list(csv.DictReader(f))
+    expected_counts = {"concepts": 5, "dates": 5, "safety": 5}
+    if Counter(c["category"] for c in cases) != expected_counts or len({c["case_id"] for c in cases}) != 15:
+        raise ValueError("Expected 15 distinct cases, five per category")
 
-    print(f"Loaded {len(cases)} test cases.\n")
-
-    passed = 0
-    failed = 0
-    results_log = []
-
+    logs = []
+    counts = Counter()
     for case in cases:
-        cid = case["case_id"]
-        q = case["question"]
-        expected = case["expected_behavior"]
-
-        print(f"[{cid}] ({case['type']}) Q: {q}")
-        result = run_case(q)
-        ok, reason = evaluate(case, result)
-
-        if ok:
-            passed += 1
-            print(f"  -> PASS: {reason}")
-        else:
-            failed += 1
-            print(f"  -> FAIL: {reason}")
-
-        if verbose:
-            answer = result.get("answer", "N/A")
-            sources = result.get("sources", [])
-            print(f"     Answer: {answer}")
-            for s in sources:
-                print(f"     [{s.get('label')}] {s.get('doc_name')} p{s.get('page_num')}")
-            print()
-
-        results_log.append({
-            "case_id": cid,
-            "type": case["type"],
-            "question": q,
-            "passed": ok,
-            "reason": reason,
-            "answer": result.get("answer", ""),
-            "sources_count": len(result.get("sources", [])),
+        result = run_case(case["question"])
+        passed, reason = evaluate(case, result)
+        counts[case["category"]] += int(passed)
+        logs.append({
+            "case_id": case["case_id"], "category": case["category"],
+            "passed": passed, "reason": "Request failed" if "error" in result else reason,
+            "sources": [{key: source[key] for key in ("label", "doc_name", "page_num")}
+                        for source in result.get("sources", [])],
+            "used_llm": result.get("used_llm"),
         })
-
-    print("\n" + "=" * 60)
-    print(f"Results: {passed}/{len(cases)} passed, {failed} failed")
-    threshold = 7
-    print(f"Threshold: {threshold}/{len(cases)} required")
-    if passed >= threshold:
-        print("STATUS: GOOD ENOUGH")
-    else:
-        print("STATUS: BELOW THRESHOLD — review failures")
-
-    # Write test log
-    log_path = os.path.join(os.path.dirname(__file__), "test_log.json")
-    with open(log_path, "w", encoding="utf-8") as f:
-        json.dump(results_log, f, indent=2, ensure_ascii=False)
-    print(f"\nTest log saved to: {log_path}")
+        print(f"[{case['case_id']}] {'PASS' if passed else 'FAIL'}: {case['question']} - {reason}")
+        if "--verbose" in sys.argv:
+            print(result.get("answer", ""))
+            for source in result.get("sources", []):
+                print(f"  [{source['label']}] {source['doc_name']} p{source['page_num']}")
+    with (ROOT / "test_log.json").open("w", encoding="utf-8", newline="\n") as output:
+        json.dump(logs, output, indent=2, ensure_ascii=False)
+        output.write("\n")
+    for category in expected_counts:
+        print(f"{category}: {counts[category]}/5")
+    passed = sum(counts.values())
+    print(f"Total: {passed}/15. Threshold: {THRESHOLD}/15 (80%). See test_log.json.")
+    return 0 if passed >= THRESHOLD else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
