@@ -188,6 +188,7 @@ computer.
 ## Moodle Authority Note
 
 This app is a student-built demonstration of RAG concepts. It is **not** an
-official course tool. For authoritative information about deadlines,
+official course tool.
+For authoritative information about deadlines,
 requirements, and decisions, always refer to the AILT9019 Moodle page or
 contact the teaching team directly.
